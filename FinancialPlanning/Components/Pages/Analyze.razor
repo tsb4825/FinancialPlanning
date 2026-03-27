@@ -1,0 +1,86 @@
+﻿@page "/analyze"
+@using FinancialPlanning.Contracts
+@using FinancialPlanning.Repositories
+@using System.Globalization
+@using Radzen.Blazor
+
+@inherits LayoutComponentBase
+@rendermode InteractiveServer
+@inject IHistoricalRepository HistoricalRepository
+
+<h3>Analyze</h3>
+
+@if (netWorthData != null && netWorthData.Any())
+{
+    <RadzenChart style="height: 500px">
+        <RadzenBarSeries Data="@netWorthData" CategoryProperty="Year" Title="Net Worth" LineType="LineType.Dashed" ValueProperty="Value">
+            <RadzenSeriesDataLabels Visible="true" />
+        </RadzenBarSeries>
+        <RadzenValueAxis Formatter="@FormatAsUSD">
+            <RadzenGridLines Visible="true" />
+            <RadzenAxisTitle Text="Net Worth" />
+        </RadzenValueAxis>
+        <RadzenBarOptions Radius="4" />
+    </RadzenChart>
+}
+
+@if (investmentData != null && investmentData.Any())
+{
+    <RadzenChart style="height: 500px">
+        <RadzenBarSeries Data="@investmentData" CategoryProperty="Year" Title="Investments" LineType="LineType.Dashed" ValueProperty="Value">
+            <RadzenSeriesDataLabels Visible="true" />
+        </RadzenBarSeries>
+        <RadzenValueAxis Formatter="@FormatAsUSD">
+            <RadzenGridLines Visible="true" />
+            <RadzenAxisTitle Text="Investments" />
+        </RadzenValueAxis>
+        <RadzenBarOptions Radius="4" />
+    </RadzenChart>
+}
+
+@if (liabilityData != null && liabilityData.Any())
+{
+    <RadzenChart style="height: 500px">
+        <RadzenBarSeries Data="@liabilityData" CategoryProperty="Year" Title="Liabilites" LineType="LineType.Dashed" ValueProperty="Value">
+            <RadzenSeriesDataLabels Visible="true" />
+        </RadzenBarSeries>
+        <RadzenValueAxis Formatter="@FormatAsUSD">
+            <RadzenGridLines Visible="true" />
+            <RadzenAxisTitle Text="Liabilities" />
+        </RadzenValueAxis>
+        <RadzenBarOptions Radius="4" />
+    </RadzenChart>
+}
+
+@code {
+    protected IEnumerable<NetWorthDate> historicalData;
+    DataItem[] netWorthData = null;
+    DataItem[] investmentData = null;
+    DataItem[] liabilityData = null;
+
+    protected override void OnInitialized()
+    {
+        this.historicalData = this.HistoricalRepository.GetHistoricalData();
+
+        var latestDataByYear = this.historicalData.GroupBy(x => x.Date.Year).Select(x => x.OrderBy(y => y.Date).First()).OrderByDescending(x => x.Date);
+        netWorthData = latestDataByYear.Select(x => new DataItem { Year = x.Date.Year, Value = this.GetNetWorth(x) }).ToArray();
+        investmentData = latestDataByYear.Select(x => new DataItem { Year = x.Date.Year, Value = x.Assets.Where(x => x.IsInvestment).Sum(x => x.Amount) }).ToArray();
+        liabilityData = latestDataByYear.Select(x => new DataItem { Year = x.Date.Year, Value = x.Liabilities.Sum(x => x.Principal) }).ToArray();
+    }
+
+    string FormatAsUSD(object value)
+    {
+        return ((double)value).ToString("C0", CultureInfo.CreateSpecificCulture("en-US"));
+    }
+
+    class DataItem
+    {
+        public int Year { get; set; }
+        public decimal Value { get; set; }
+    }
+
+    private decimal GetNetWorth(NetWorthDate netWorth)
+    {
+        return netWorth.Assets.Sum(x => x.Amount) - netWorth.Liabilities.Sum(x => x.Principal);
+    }
+}

@@ -1,0 +1,197 @@
+﻿@page "/planning"
+@using FinancialPlanning.Contracts
+@using FinancialPlanning.Managers
+@using FinancialPlanning.Repositories
+@inherits LayoutComponentBase
+@rendermode InteractiveServer
+@inject IFinancialPlanningProvider FinancialPlanningProvider
+@inject IAssetRepository AssetRepository
+@inject ILiabilityRepository LiabilityRepository
+@inject IPersonRepository PersonRepository
+
+<PageTitle>Financial Planning</PageTitle>
+
+<h1>Financial Planning</h1>
+
+<p>Current investments</p>
+<p>
+    @currentInvestments.ToString("C")
+</p>
+
+<p>Project your investments</p>
+<label style="margin-right:10px;">Years to Project</label><InputNumber @bind-Value=projectedYears />
+<br/>
+<br/>
+<label style="margin-right:10px;">Yearly Contribution</label>
+<br/>
+<br/>
+<button class="btn btn-success" @onclick=ProjectInvestments>Project</button>
+<br/>
+<br/>
+<label style="margin-right:10px;">Retirement ROI %</label>
+<InputNumber @bind-Value=retirementRoi />
+<br />
+<br />
+<button class="btn btn-success" @onclick=CalculateRetirementPlan>Calculate Youngest Retirement Plan</button>
+<br />
+<br />
+<label style="margin-right:10px;">Extra Money To Pay Down</label>
+<InputNumber @bind-Value=extraPrincipal />
+<br />
+<br />
+<button class="btn btn-success" @onclick=CalculateLoansToPay>Calculate Loans to Pay Down</button>
+
+@if(shouldProject)
+{
+    <p>
+        Over @projectedYears years, your investments should reach @projectedAssets.Sum(x => x.Amount).ToString("C")
+    </p>
+}
+
+@if(calculatedRetirement)
+{
+    <br/>
+    <br/>
+    <p>You may be able to retire at @retirementResponse.RetirementAge.<br/>
+        Your starting retirement funds would be @retirementResponse.StartingTotalRetirement.ToString("C") <br/>
+        You should live off of @((this.personData.YearlyCurrentSalary * .8M).ToString("C")). <br />
+        @(retirementResponse.DelaySocialSecurityAge ? "You would delay social security until 70." : "")<br/>
+        @(retirementResponse.RetirementAge < 65 ? "Retiring before 65 means you will have a gap in health insurance and potential early withdrawl penalties from your retirement investments." : "")
+    </p>
+    <button class="btn btn-info" @onclick=ShowRetirementBreakdown>Show Retirement Breakdown</button>
+}
+
+@if(showRetirementBreakdown)
+{
+    <div class="modal modal-background">
+        <div class="modal-dialog modal-body" style="top: calc(50vh - 390px); height:720px;max-width: 800px;width: 800px;">
+            <div class="modal-dialog-head">
+                <div class="title formLabel" style="font-size: 1.5rem;color:white;">Retirement Breakdown</div>
+            </div>
+            <div class="modal-dialog-body" style="max-height:650px;overflow-y:auto;color:white;max-height:600px;margin-bottom:20px;width:100%">
+                <table style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>Age</th>
+                            <th>Starting Investment</th>
+                            <th>Investment Return</th>
+                            <th>Social Security Payment</th>
+                            <th>Investment Withdrawl</th>
+                            <th>Ending Investment</th>
+                        </tr>
+                    </thead>
+                    @for (int index = 0; index < retirementResponse.RetirementYearData.Count(); index++)
+                    {
+                        <tr>
+                            <td>@retirementResponse.RetirementYearData.Skip(index).First().RetirementAgeYear</td>
+                            <td>@retirementResponse.RetirementYearData.Skip(index).First().StartingInvestmentAmount.ToString("C")</td>
+                            <td>@retirementResponse.RetirementYearData.Skip(index).First().InvestmentReturnAmount.ToString("C")</td>
+                            <td>@retirementResponse.RetirementYearData.Skip(index).First().SocialSecurityPayment.ToString("C")</td>
+                            <td>@retirementResponse.RetirementYearData.Skip(index).First().InvestmentWithdrawlAmount.ToString("C")</td>
+                            <td>@retirementResponse.RetirementYearData.Skip(index).First().EndingInvestmentAmount.ToString("C")</td>
+                        </tr>
+                    }
+                </table>
+            </div>
+            <div class="modal-dialog-foot">
+                <button class="btn btn-dark float-end" @onclick="HideRetirementBreakdown">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if(showLoansToPay)
+{
+    <br/>
+    <br/>
+    <ol>
+        @foreach(var loanToPay in loansToPay)
+        {
+            <li>@loanToPay.Name, Principal - @loanToPay.ExtraPrincipal.ToString("C"), Interest Saved - @loanToPay.InterestSaved.ToString("C"), Payments Saved - @loanToPay.PaymentsSaved</li>
+        }
+    </ol>
+}
+
+@code {
+    protected int projectedYears;
+    protected decimal retirementRoi;
+    protected PlanningResponse retirementResponse;
+    protected decimal extraPrincipal;
+    protected bool showLoansToPay;
+    protected IEnumerable<LoanToPay> loansToPay;
+    protected PersonData personData;
+
+    protected bool shouldProject;
+    protected bool calculatedRetirement;
+    protected bool showRetirementBreakdown;
+
+    protected IEnumerable<Asset> assets;
+    protected IEnumerable<Liability> liabilities;
+    protected IEnumerable<Asset> projectedAssets;
+    protected decimal currentInvestments;
+
+    protected override void OnInitialized()
+    {
+        this.assets = this.AssetRepository.GetAssets();
+        this.liabilities = this.LiabilityRepository.GetLiabilities();
+        foreach(var asset in assets.Where(x => x.IsInvestment))
+        {
+            if (asset.CollateralLoanId > 0)
+            {
+                currentInvestments += (asset.Amount - liabilities.First(x => x.Id == asset.CollateralLoanId).Principal);
+            }
+            else
+            {
+                currentInvestments += asset.Amount;
+            }
+        }
+
+        this.personData = this.PersonRepository.GetPersonData();
+    }
+
+    protected void ProjectInvestments()
+    {
+        this.projectedAssets = new List<Asset>(this.FinancialPlanningProvider.ProjectInvestmentGrowth(projectedYears, new List<Asset>(this.assets.Where(x => x.IsInvestment)), this.personData.YearlyContribution));
+        foreach(var asset in projectedAssets)
+        {
+            if (asset.CollateralLoanId > 0)
+            {
+                asset.Amount -= liabilities.First(x => x.Id == asset.CollateralLoanId).Principal;
+            }
+        }
+
+        shouldProject = true;
+    }
+
+    protected void CalculateRetirementPlan()
+    {
+        var planningData = new PlanningData 
+        {
+            AgeYears = this.personData.AgeYears,
+            CurrentYearlySalary = this.personData.YearlyCurrentSalary,
+            ExpectedSocialSecurityYearly = this.personData.YearlyExpectedSocialSecurity,
+            YearlyContribution = this.personData.YearlyContribution,
+            RetirementRoi = retirementRoi
+        };
+
+        retirementResponse = this.FinancialPlanningProvider.CalculateRetirementPlan(planningData, assets.Where(x => x.IsInvestment));
+
+        calculatedRetirement = true;
+    }
+
+    protected void ShowRetirementBreakdown()
+    {
+        showRetirementBreakdown = true;
+    }
+
+    protected void HideRetirementBreakdown()
+    {
+        showRetirementBreakdown = false;
+    }
+
+    protected void CalculateLoansToPay()
+    {
+        loansToPay = this.FinancialPlanningProvider.CalculateWhichLoansToPayForInterestSaving(extraPrincipal, liabilities);
+        showLoansToPay = true;
+    }
+}

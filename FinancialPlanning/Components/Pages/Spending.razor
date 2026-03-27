@@ -1,0 +1,131 @@
+﻿@page "/spending"
+@using FinancialPlanning.Contracts
+@using FinancialPlanning.Repositories
+@using Newtonsoft.Json
+@inherits LayoutComponentBase
+@rendermode InteractiveServer
+@inject ISpendingRepository SpendingRepository
+@inject ILiabilityRepository LiabilityRepository
+@inject IPersonRepository PersonRepository
+@inject IJSRuntime JsRuntime
+
+<h3>Monthly Spending</h3>
+<br/>
+<h4>Monthly Income - @((personData.YearlyCurrentSalary / 12).ToString("C"))</h4>
+<h4>Total Monthly Spend - @monthlySpends.Sum(x => x.Amount).ToString("C")</h4>
+<br/>
+<button class="btn btn-primary" @onclick="ShowAddSpend">Add</button>
+<br />
+<br />
+<table width="500px;">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Amount</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    @foreach (var monthlySpend in monthlySpends.OrderByDescending(x => x.Amount))
+    {
+        <tr>
+            <td>@monthlySpend.Name</td>
+            <td>@monthlySpend.Amount.ToString("C")</td>
+            <td>
+                @if (monthlySpend.LiabilityId == null)
+                {
+                    <button class="btn btn-sm btn-info" @onclick="() => EditMonthlySpend(monthlySpend.Id)">Edit</button>
+                    <button class="btn btn-sm btn-danger" @onclick="() => DeleteMonthlySpend(monthlySpend.Id)">Delete</button>
+                }
+            </td>
+        </tr>    
+    }
+</table>
+
+
+@if (shouldShowAddSpend)
+{
+    <div class="modal modal-background">
+        <div class="modal-dialog modal-body" style="top: calc(50vh - 175px); height:200px;max-width: 800px;width: 800px;">
+            <div class="modal-dialog-head">
+                <div class="title formLabel" style="font-size: 1.5rem;color:white;">Add Spending</div>
+            </div>
+            <div class="modal-dialog-body" style="max-height:650px;overflow-y:auto;color:white;max-height:600px;margin-bottom:20px;width:100%">
+                <EditForm Model="@spendToAdd">
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Name</label></div>
+                        <div style="flex: 1"><InputText @bind-Value=spendToAdd.Name /></div>
+                    </div>
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Amount</label></div>
+                        <div style="flex: 1"><InputNumber @bind-Value=spendToAdd.Amount /></div>
+                    </div>
+                </EditForm>
+            </div>
+            <div class="modal-dialog-foot">
+                <button class="btn btn-info" @onclick="AddSpend">@(spendToAdd.Id > 0 ? "Update" : "Add")</button>
+                <button class="btn btn-dark float-end" @onclick="CloseAddSpend">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    protected IEnumerable<MonthlySpend> monthlySpends;
+    protected bool shouldShowAddSpend = false;
+    protected MonthlySpend spendToAdd = new MonthlySpend();
+    protected IEnumerable<Liability> liabilities;
+    protected PersonData personData = new PersonData();
+
+    protected override void OnInitialized()
+    {
+        this.monthlySpends = this.SpendingRepository.GetSpending();
+        liabilities = this.LiabilityRepository.GetLiabilities();
+        this.monthlySpends = this.monthlySpends.Concat(liabilities.Select(x => new MonthlySpend { Name = x.Name, Amount = x.FrequencyPayment, LiabilityId = x.Id }));
+        this.personData = this.PersonRepository.GetPersonData();
+    }
+
+    protected void ShowAddSpend()
+    {
+        this.shouldShowAddSpend = true;
+    }
+
+    protected void CloseAddSpend()
+    {
+        this.shouldShowAddSpend = false;
+        this.spendToAdd = new MonthlySpend();
+    }
+
+    protected void AddSpend()
+    {
+        this.shouldShowAddSpend = false;
+        if (this.spendToAdd.Id != 0)
+        {
+            var monthlySpend = this.monthlySpends.First(x => x.Id == this.spendToAdd.Id);
+            monthlySpend.Name = this.spendToAdd.Name;
+            monthlySpend.Amount = this.spendToAdd.Amount;
+        } else
+        {
+            this.monthlySpends = this.monthlySpends.Concat(new List<MonthlySpend> { this.spendToAdd });
+        }
+
+        this.monthlySpends = this.SpendingRepository.SaveSpending(this.monthlySpends.Where(x => x.LiabilityId == null));
+        this.monthlySpends = this.monthlySpends.Concat(liabilities.Select(x => new MonthlySpend { Name = x.Name, Amount = x.FrequencyPayment, LiabilityId = x.Id }));
+        this.spendToAdd = new MonthlySpend();
+    }
+
+    protected void EditMonthlySpend(int id)
+    {
+        this.shouldShowAddSpend = true;
+        this.spendToAdd = JsonConvert.DeserializeObject<MonthlySpend>(JsonConvert.SerializeObject(this.monthlySpends.First(x => x.Id == id)));
+    }
+
+    protected async Task DeleteMonthlySpend(int id)
+    {
+        bool confirmed = await JsRuntime.InvokeAsync<bool>("confirm", "Are you sure?"); // Confirm
+        if (confirmed)
+        {
+            this.monthlySpends = this.monthlySpends.Where(x => x.Id != id);
+            this.SpendingRepository.SaveSpending(this.monthlySpends);
+        }
+    }
+}

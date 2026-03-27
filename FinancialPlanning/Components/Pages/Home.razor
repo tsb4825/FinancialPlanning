@@ -1,0 +1,48 @@
+﻿@page "/"
+@using FinancialPlanning.Contracts
+@using FinancialPlanning.Repositories
+@inherits LayoutComponentBase
+@rendermode InteractiveServer
+@inject IPersonRepository PersonRepository
+@inject IAssetRepository AssetRepository
+@inject ILiabilityRepository LiabilityRepository
+@inject IHistoricalRepository HistoricalRepository
+
+<PageTitle>Personal Data</PageTitle>
+
+<h1>Personal Data</h1>
+
+<label style="margin-right:10px;">Current Age</label>
+<InputNumber @bind-Value=personData.AgeYears />
+<br />
+<br />
+<label style="margin-right:10px;">Current Salary</label>
+<InputNumber @bind-Value=personData.YearlyCurrentSalary />
+<br />
+<br />
+<label style="margin-right:10px;">Yearly Contribution</label>
+<InputNumber @bind-Value=personData.YearlyContribution />
+<br />
+<br />
+<label style="margin-right:10px;">Expected Social Security</label>
+<InputNumber @bind-Value=personData.YearlyExpectedSocialSecurity />
+<br />
+<br />
+<button class="btn btn-success" @onclick="SavePersonalData">Save</button>
+
+@code {
+    protected PersonData personData = new PersonData();
+
+    protected override void OnInitialized()
+    {
+        this.personData = this.PersonRepository.GetPersonData();
+        IEnumerable<Asset> assets = this.AssetRepository.GetAssets();
+        IEnumerable<Liability> liabilities = this.LiabilityRepository.GetLiabilities();
+        this.HistoricalRepository.SaveData(assets, liabilities);
+    }
+
+    protected void SavePersonalData()
+    {
+        this.PersonRepository.SavePersonData(this.personData);
+    }
+}

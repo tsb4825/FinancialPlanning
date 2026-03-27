@@ -1,0 +1,473 @@
+﻿@page "/networth"
+@using FinancialPlanning.Contracts
+@using FinancialPlanning.Contracts.Enums
+@using FinancialPlanning.Managers
+@using FinancialPlanning.Repositories
+@inherits LayoutComponentBase
+@inject IFinancialPlanningProvider FinancialPlanningProvider
+@inject IAssetRepository AssetRepository
+@inject ILiabilityRepository LiabilityRepository
+@inject IJSRuntime JsRuntime
+
+<PageTitle>Net Worth</PageTitle>
+
+<h1>Net Worth</h1>
+<br />
+
+<h2 style="display:inline;">Investments</h2><span class="addButton" @onclick="OpenAddInvestment">+</span>
+<table style="border: 1px solid black; width:600px">
+    <thead style="border: 1px solid black;">
+        <tr>
+            <th>Name</th>
+            <th style="text-align:center">Amount</th>
+            <th style="text-align:center">Expected ROI %</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    @foreach (var asset in assets.Where(x => x.IsInvestment).OrderByDescending(x => x.Amount))
+    {
+        <tr style="border: 1px solid black;">
+            <td>@asset.Name</td>
+            <td style="text-align:center">@asset.Amount.ToString("C")</td>
+            <td style="text-align:center">@asset.ExpectedReturnRate.ToString("0.00")%</td>
+            <td>
+                <button class="btn btn-sm btn-info" @onclick="() => EditAsset(asset.Id, true)">Edit</button>
+                <button class="btn btn-sm btn-danger" @onclick="() => DeleteAsset(asset.Id)">Delete</button>
+            </td>
+        </tr>
+    }
+
+</table>
+<br/>
+Total Investments: @assets.Where(x => x.IsInvestment).Sum(x => x.Amount).ToString("C")
+<br />
+<br />
+<h2 style="display:inline;">Liabilities</h2><span class="addButton" @onclick="OpenAddLiability">+</span>
+<table style="border: 1px solid black; width:800px">
+    <thead style="border: 1px solid black;">
+        <tr>
+            <th>Name</th>
+            <th style="text-align:center">Current Principal</th>
+            <th style="text-align:center">Interest Rate</th>
+            <th style="text-align:center;">Projected Payoff</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    @foreach (var liability in liabilities.OrderByDescending(x => x.Principal))
+    {
+        <tr style="border: 1px solid black;">
+            <td>@liability.Name</td>
+            <td style="text-align:center;">@liability.Principal.ToString("C")</td>
+            <td style="text-align:center;">@liability.InterestRate.ToString("0.00")%</td>
+            <td style="text-align:center;">@liability.ProjectedPayoff</td>
+            <td>
+                <button class="btn btn-sm btn-info" @onclick="() => EditLiability(liability.Id)">Edit</button>
+                <button class="btn btn-sm btn-danger" @onclick="() => DeleteLiability(liability.Id)">Delete</button>
+                <button class="btn btn-sm btn-secondary" @onclick="() => ShowAmoritizationSchedule(liability.Id)">Show Amoritization Schedule</button>
+            </td>
+        </tr>
+    }
+</table>
+<br/>
+Total Liabilities: @liabilities.Sum(x => x.Principal).ToString("C")
+<br />
+<br />
+<h2 style="display:inline;">Other Assets</h2><span class="addButton" @onclick="OpenAddAsset">+</span>
+<table style="border: 1px solid black; width:600px">
+    <thead style="border: 1px solid black;">
+        <tr>
+            <th>Name</th>
+            <th style="text-align:center">Amount</th>
+            <th style="text-align:center">Expected ROI %</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    @foreach (var asset in assets.Where(x => !x.IsInvestment).OrderByDescending(x => x.Amount))
+    {
+        <tr style="border: 1px solid black;">
+            <td>@asset.Name</td>
+            <td style="text-align:center">@asset.Amount.ToString("C")</td>
+            <td style="text-align:center">@asset.ExpectedReturnRate.ToString("0.00")%</td>
+            <td>
+                <button class="btn btn-sm btn-info" @onclick="() => EditAsset(asset.Id, true)">Edit</button>
+                <button class="btn btn-sm btn-danger" @onclick="() => DeleteAsset(asset.Id)">Delete</button>
+            </td>
+       </tr>
+    }
+</table>
+<br />
+Total Assets: @assets.Where(x => !x.IsInvestment).Sum(x => x.Amount).ToString("C")
+<br />
+<br />
+<br />
+<h4>Total Net Worth: @((assets.Sum(x => x.Amount) - liabilities.Sum(x => x.Principal)).ToString("C"))</h4>
+
+@if (shouldOpenInvestment)
+{
+    <div class="modal modal-background">
+        <div class="modal-dialog modal-body" style="top: calc(50vh - 150px);">
+            <div class="modal-dialog-head">
+                <div class="title formLabel">Add Investment</div>
+            </div>
+            <div class="modal-dialog-body">
+                <EditForm Model="@investmentToAdd">
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Name</label></div>
+                        <div style="flex: 1"><InputText @bind-Value=investmentToAdd.Name /></div>
+                    </div>
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Amount</label></div>
+                        <div style="flex: 1"><InputNumber @bind-Value=investmentToAdd.Amount /></div>
+                    </div>
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Expected Return Rate %</label></div>
+                        <div style="flex: 1"><InputNumber @bind-Value=investmentToAdd.ExpectedReturnRate /></div>
+                    </div>
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Collateral Loan</label></div>
+                        <div style="flex: 1">
+                            <InputSelect @bind-Value="investmentToAdd.CollateralLoanId">
+                                @foreach (var loan in liabilities)
+                                {
+                                    <option value="@loan.Id">@loan.Name</option>
+                                }
+
+                                @if (liabilities.Count() == 0)
+                                {
+                                    <option value="0">No Loan Selected</option>
+                                }
+                            </InputSelect>
+                        </div>
+                    </div>
+                </EditForm>
+            </div>
+            <div class="modal-dialog-foot">
+                <button class="btn btn-info" @onclick="AddInvestment">@(investmentToAdd.Id > 0 ? "Update" : "Add")</button>
+                <button class="btn btn-dark float-end" @onclick="HideAddInvestment">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (shouldOpenLiability)
+{
+    <div class="modal modal-background">
+        <div class="modal-dialog modal-body" style="top: calc(50vh - 150px);">
+            <div class="modal-dialog-head">
+                <div class="title formLabel">Add Liability</div>
+            </div>
+            <div class="modal-dialog-body">
+                <EditForm Model="@liabilityToAdd">
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Name</label></div>
+                        <div style="flex: 1"><InputText @bind-Value=liabilityToAdd.Name /></div>
+                    </div>
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Current Principal</label></div>
+                        <div style="flex: 1"><InputNumber @bind-Value=liabilityToAdd.Principal /></div>
+                    </div>
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Original Principal</label></div>
+                        <div style="flex: 1"><InputNumber @bind-Value=liabilityToAdd.OriginalPrincipal /></div>
+                    </div>
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Interest Rate %</label></div>
+                        <div style="flex: 1"><InputNumber @bind-Value=liabilityToAdd.InterestRate /></div>
+                    </div>
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Payment Amount</label></div>
+                        <div style="flex: 1"><InputNumber @bind-Value=liabilityToAdd.FrequencyPayment /></div>
+                    </div>
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Escrow Amount</label></div>
+                        <div style="flex: 1"><InputNumber @bind-Value=liabilityToAdd.EscrowMonthlyAmount /></div>
+                    </div>
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Frequency of Payment</label></div>
+                        <div style="flex: 1">
+                            <InputSelect @bind-Value="liabilityToAdd.FrequencyPaymentType">
+                                <option id="1">Monthly</option>
+                            </InputSelect>
+                        </div>
+                    </div>
+                </EditForm>
+            </div>
+            <div class="modal-dialog-foot">
+                <button class="btn btn-info" @onclick="AddLiability">@(liabilityToAdd.Id > 0 ? "Update" : "Add")</button>
+                <button class="btn btn-dark float-end" @onclick="HideAddLiability">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (shouldOpenAsset)
+{
+    <div class="modal modal-background">
+        <div class="modal-dialog modal-body" style="top: calc(50vh - 150px);">
+            <div class="modal-dialog-head">
+                <div class="title formLabel">Add Asset</div>
+            </div>
+            <div class="modal-dialog-body">
+                <EditForm Model="@assetToAdd">
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Name</label></div>
+                        <div style="flex: 1"><InputText @bind-Value=assetToAdd.Name /></div>
+                    </div>
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Amount</label></div>
+                        <div style="flex: 1"><InputNumber @bind-Value=assetToAdd.Amount /></div>
+                    </div>
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Expected Return Rate %</label></div>
+                        <div style="flex: 1"><InputNumber @bind-Value=assetToAdd.ExpectedReturnRate /></div>
+                    </div>
+                    <div class="formGrouping">
+                        <div style="flex:1 1"><label class="formLabel">Collateral Loan</label></div>
+                        <div style="flex: 1">
+                            <InputSelect @bind-Value="assetToAdd.CollateralLoanId">
+                                @foreach (var loan in liabilities)
+                                {
+                                    <option value="@loan.Id">@loan.Name</option>
+                                }
+
+                                @if (liabilities.Count() == 0)
+                                {
+                                    <option value="0">No Loan Selected</option>
+                                }
+                            </InputSelect>
+                        </div>
+                    </div>
+                </EditForm>
+            </div>
+            <div class="modal-dialog-foot">
+                <button class="btn btn-info" @onclick="AddAsset">@(assetToAdd.Id > 0 ? "Update" : "Add")</button>
+                <button class="btn btn-dark float-end" @onclick="HideAddAsset">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (shouldShowAmoritizationSchedule)
+{
+    <div class="modal modal-background">
+        <div class="modal-dialog modal-body" style="top: calc(50vh - 390px); height:720px;max-width: 600px;width: 600px;">
+            <div class="modal-dialog-head">
+                <div class="title formLabel" style="font-size: 1.5rem;">Payment Shedule</div>
+            </div>
+            <div class="modal-dialog-body" style="max-height:650px;overflow-y:auto;color:white;max-height:600px;margin-bottom:20px;width:100%">
+                <table style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>Number</th>
+                            <th>Payment Amount</th>
+                            <th>Principal</th>
+                            <th>Interest</th>
+                            <th>Remaining Principal</th>
+                        </tr>
+                    </thead>
+                @for (int index = 0; index < loanPayments[selectedLoanId].Count(); index++)
+                {
+                    <tr>
+                        <td>@(index + 1)</td>
+                        <td>@loanPayments[selectedLoanId].Skip(index).First().Amount.ToString("C")</td>
+                        <td>@loanPayments[selectedLoanId].Skip(index).First().Principal.ToString("C")</td>
+                        <td>@loanPayments[selectedLoanId].Skip(index).First().Interest.ToString("C")</td>
+                        <td>@loanPayments[selectedLoanId].Skip(index).First().RemainingPrincipal.ToString("C")</td>
+                    </tr>
+                }
+                </table>
+            </div>
+            <div class="modal-dialog-foot">
+                <button class="btn btn-dark float-end" @onclick="HideAmoritizationSchedule">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private IEnumerable<Asset> assets;
+    private IEnumerable<Liability> liabilities;
+    private Asset investmentToAdd = new Asset { IsInvestment = true };
+    private Asset assetToAdd = new Asset();
+    private Liability liabilityToAdd = new Liability();
+    Dictionary<int, IEnumerable<Payment>> loanPayments = new Dictionary<int, IEnumerable<Payment>>();
+
+    private int selectedLoanId;
+    private bool shouldOpenInvestment = false;
+    private bool shouldOpenLiability = false;
+    private bool shouldOpenAsset = false;
+    private bool shouldShowAmoritizationSchedule = false;
+
+    protected override void OnInitialized()
+    {
+        assets = this.AssetRepository.GetAssets();
+        liabilities = this.LiabilityRepository.GetLiabilities();
+        this.CalculateAllPayoffs();
+    }
+
+    protected void OpenAddInvestment()
+    {
+        shouldOpenInvestment = true;
+    }
+
+    protected void HideAddInvestment()
+    {
+        investmentToAdd = new Asset { IsInvestment = true };
+        shouldOpenInvestment = false;
+    }
+
+    protected void AddInvestment()
+    {
+        if (investmentToAdd.Id > 0)
+        {
+            var assetToUpdate = assets.FirstOrDefault(x => x.Id == investmentToAdd.Id);
+            assetToUpdate.Amount = investmentToAdd.Amount;
+            assetToUpdate.ExpectedReturnRate = investmentToAdd.ExpectedReturnRate;
+            assetToUpdate.CollateralLoanId = investmentToAdd.CollateralLoanId;
+            assetToUpdate.Name = investmentToAdd.Name;
+        }
+        else
+        {
+            assets = assets.Concat(new List<Asset> { investmentToAdd });
+        }
+
+        assets = this.AssetRepository.SaveAssets(assets);
+        shouldOpenInvestment = false;
+        investmentToAdd = new Asset { IsInvestment = true };
+    }
+
+    protected async Task DeleteAsset(int assetId)
+    {
+        bool confirmed = await JsRuntime.InvokeAsync<bool>("confirm", "Are you sure?"); // Confirm
+        if (confirmed)
+        {
+            var assetsToSave = assets.ToList();
+            assetsToSave.Remove(assets.First(x => x.Id == assetId));
+            assets = this.AssetRepository.SaveAssets(assetsToSave);
+        }
+    }
+
+    protected void OpenAddLiability()
+    {
+        shouldOpenLiability = true;
+    }
+
+    protected void HideAddLiability()
+    {
+        liabilityToAdd = new Liability(); 
+        shouldOpenLiability = false;
+    }
+
+    protected void AddLiability()
+    {
+        if (liabilityToAdd.Id > 0)
+        {
+            var liabilityToUpdate = liabilities.FirstOrDefault(x => x.Id == liabilityToAdd.Id);
+            liabilityToUpdate.Name = liabilityToAdd.Name;
+            liabilityToUpdate.InterestRate = liabilityToAdd.InterestRate;
+            liabilityToUpdate.OriginalPrincipal = liabilityToAdd.OriginalPrincipal;
+            liabilityToUpdate.Principal = liabilityToAdd.Principal;
+            liabilityToUpdate.FrequencyPayment = liabilityToAdd.FrequencyPayment;
+            liabilityToUpdate.EscrowMonthlyAmount = liabilityToAdd.EscrowMonthlyAmount;
+            liabilityToUpdate.FrequencyPaymentType = liabilityToAdd.FrequencyPaymentType;
+        }
+        else
+        {
+            liabilities = liabilities.Concat(new List<Liability> { liabilityToAdd });
+        }
+
+        liabilities = this.LiabilityRepository.SaveLiabilities(liabilities);
+        this.CalculateAllPayoffs();
+        shouldOpenLiability = false;
+        liabilityToAdd = new Liability();
+    }
+
+    protected async Task DeleteLiability(int liabilityId)
+    {
+        bool confirmed = await JsRuntime.InvokeAsync<bool>("confirm", "Are you sure?"); // Confirm
+        if (confirmed)
+        {
+            var liabilitiesToSave = liabilities.ToList();
+            liabilitiesToSave.Remove(liabilities.First(x => x.Id == liabilityId));
+            liabilities = this.LiabilityRepository.SaveLiabilities(liabilitiesToSave);
+        }
+    }
+
+    protected void OpenAddAsset()
+    {
+        shouldOpenAsset = true;
+    }
+
+    protected void HideAddAsset()
+    {
+        assetToAdd = new Asset();
+        shouldOpenAsset = false;
+    }
+
+    protected void AddAsset()
+    {
+        if (assetToAdd.Id > 0)
+        {
+            var assetToUpdate = assets.FirstOrDefault(x => x.Id == assetToAdd.Id);
+            assetToUpdate.Amount = investmentToAdd.Amount;
+            assetToUpdate.ExpectedReturnRate = investmentToAdd.ExpectedReturnRate;
+            assetToUpdate.CollateralLoanId = investmentToAdd.CollateralLoanId;
+            assetToUpdate.Name = investmentToAdd.Name;
+        }
+
+        assets = assets.Concat(new List<Asset> { assetToAdd });
+        assets = this.AssetRepository.SaveAssets(assets);
+        shouldOpenAsset = false;
+        assetToAdd = new Asset();
+    }
+
+    protected void EditAsset(int assetId, bool isInvestment)
+    {
+        if (isInvestment)
+        {
+            investmentToAdd = assets.FirstOrDefault(x => x.Id == assetId);
+            shouldOpenInvestment = true;
+        } 
+        else
+        {
+            assetToAdd = assets.FirstOrDefault(x => x.Id == assetId);
+            shouldOpenAsset = true;
+        }
+    }
+
+    protected void EditLiability(int liabilityId)
+    {
+        liabilityToAdd = liabilities.FirstOrDefault(x => x.Id == liabilityId);
+        shouldOpenLiability = true;
+    }
+
+    protected void ShowAmoritizationSchedule(int liabilityId)
+    {
+        shouldShowAmoritizationSchedule = true;
+        this.selectedLoanId = liabilityId;
+    }
+
+    protected void HideAmoritizationSchedule()
+    {
+        shouldShowAmoritizationSchedule = false;
+    }
+
+    private void CalculateAllPayoffs()
+    {
+        loanPayments = new Dictionary<int, IEnumerable<Payment>>();
+        foreach (var liability in liabilities)
+        {
+            IEnumerable<Payment> payments = this.FinancialPlanningProvider.BuildAmoritizationSchedule(liability);
+            if (payments.Count() > 12)
+            {
+                liability.ProjectedPayoff = $"{payments.Count() / 12} years, {payments.Count() % 12} months";
+            }
+            else
+            {
+                liability.ProjectedPayoff = $"{payments.Count() % 12} months";
+            }
+
+            loanPayments.Add(liability.Id, payments);
+        }
+    }
+}

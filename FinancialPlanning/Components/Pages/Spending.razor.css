@@ -1,0 +1,32 @@
+﻿::deep tbody tr:nth-child(even) {
+    background-color: lightslategrey !important;
+    color: white;
+}
+
+.modal-background {
+    display: block;
+    background-color: rgb(0,0,0, .7);
+    opacity: 1;
+    pointer-events: none;
+}
+
+.modal-body {
+    background-color: steelblue;
+    width: 100%;
+    color: black;
+}
+
+.formLabel {
+    color: white;
+}
+
+.formGrouping {
+    display: flex;
+    margin-bottom: 5px;
+}
+
+.modal-dialog {
+    pointer-events: auto;
+    z-index: 1055;
+    position: relative;
+}
